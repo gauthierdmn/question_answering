@@ -6,10 +6,10 @@ cryptography==2.5
 cymem==2.0.2
 cytoolz==0.9.0.1
 dill==0.2.9
-en-core-web-sm==2.0.0
+#en-core-web-sm==2.0.0
 idna==2.8
-mkl-fft==1.0.10
-mkl-random==1.0.2
+#mkl-fft==1.0.10
+#mkl-random==1.0.2
 msgpack==0.6.1
 msgpack-numpy==0.4.3.2
 murmurhash==1.0.0

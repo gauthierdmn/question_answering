@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 
 # internal utilities
 import config
-from model import CNN_Text
+from model import BiDAF
 from data_loader import SquadDataset
 from utils import custom_sampler, save_checkpoint
 
@@ -40,7 +40,7 @@ with open(os.path.join(config.train_dir, "train_labels.pkl"), "rb") as l:
 with open(os.path.join(config.train_dir, "embeddings.pkl"), "rb") as e:
     embedding_matrix = pickle.load(e)
 
-embedding_matrix = np.array(embedding_matrix)
+embedding_matrix = torch.from_numpy(np.array(embedding_matrix)).type(torch.float32)
 
 print("Creating dataset...")
 part_a_dataset_train = SquadDataset(context, question, labels)
@@ -69,7 +69,9 @@ print("Length of valid data loader is:", len(valid_dataloader))
 
 print("Loading model...")
 
-model = CNN_Text(10000, embedding_matrix, hyper_params['output_dim'])
+model = BiDAF(word_vectors=embedding_matrix,
+              hidden_size=config.hidden_size,
+              drop_prob=config.drop_prob)
 model.to(device)
 
 print("Model successfully loaded!")
@@ -100,14 +102,14 @@ for epoch in range(hyper_params['num_epochs']):
                                             batch[2][:, 0].long().to(device),\
                                             batch[2][:, 1].long().to(device)
         optimizer.zero_grad()
-        pred = model(context, question).squeeze(1)
-        loss = criterion(pred, label1)
+        pred1, pred2 = model(context, question)
+        loss = criterion(pred1, label1) + criterion(pred2, label1)
         train_losses += loss.item()
 
         loss.backward()
         optimizer.step()
 
-        if (i + 1) % 400 == 0:
+        if (i + 1) % 1 == 0:
             print('Epoch [%d/%d], Iter [%d/%d] Loss: %.4f'
                   % (epoch + 1, hyper_params['num_epochs'], i + 1, len(train_dataloader), loss.item()))
 
@@ -124,23 +126,19 @@ for epoch in range(hyper_params['num_epochs']):
                                                 batch[1].long().to(device), \
                                                 batch[2][:, 0].long().to(device), \
                                                 batch[2][:, 1].long().to(device)
-            pred = model(context, question).squeeze(1)
-            loss = criterion(pred, label1)
+            pred1, pred2 = model(context, question)
+            loss = criterion(pred1, label1) + criterion(pred2, label1)
             valid_losses += loss.item()
-            list_preds += [x for x in pred.data.numpy().tolist()]
-            list_labels += label1.data.cpu().numpy().tolist()
 
-        list_preds = [np.argmax(p) for p in list_preds]
-
-        acc = round(100*sum([p == l for p, l in zip(list_preds, list_labels)]) / len(list_labels), 2)
-        print('Validation accuracy of the model at epoch {} is: {} %'.format(epoch, acc))
+        print('Validation loss of the model at epoch {} is: {} %'.format(epoch, np.round(valid_losses /
+                                                                                         len(valid_dataloader), 2)))
 
     # save last model weights
     save_checkpoint({
         'epoch': epoch + 1 + epoch_checkpoint,
         'state_dict': model.state_dict(),
         'best_valid_loss': np.round(valid_losses / len(valid_dataloader), 2)
-    }, True, 'output/dummy_last_checkpoint.pkl')
+    }, True, 'output/bidaf_last_checkpoint.pkl')
 
     # save model with best validation error
     is_best = bool(np.round(valid_losses / len(valid_dataloader), 2) < best_valid_loss)
@@ -149,4 +147,4 @@ for epoch in range(hyper_params['num_epochs']):
         'epoch': epoch + 1 + epoch_checkpoint,
         'state_dict': model.state_dict(),
         'best_valid_loss': best_valid_loss
-    }, is_best, 'output/dummy.pkl'.format(hyper_params['learning_rate']))
+    }, is_best, 'output/bidaf.pkl'.format(hyper_params['learning_rate']))

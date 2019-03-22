@@ -1,14 +1,16 @@
 # external libraries
 import os
+import re
 import spacy
 import pickle
-import tqdm
+import string
 import numpy as np
 from collections import Counter
 from spacy.tokenizer import Tokenizer
 from spacy.lang.en import English
 import torch
 from torch.utils.data.sampler import SubsetRandomSampler
+import torch.nn.functional as F
 
 # internal utilities
 from config import train_dir, dev_dir, spacy_en
@@ -132,3 +134,73 @@ def custom_sampler(data, valid_size=0.02):
     valid_sampler = SubsetRandomSampler(valid_idx)
 
     return train_sampler, valid_sampler
+
+
+def masked_softmax(logits, mask, dim=-1, log_softmax=False):
+    """Take the softmax of `logits` over given dimension, and set
+    entries to 0 wherever `mask` is 0.
+    Args:
+        logits (torch.Tensor): Inputs to the softmax function.
+        mask (torch.Tensor): Same shape as `logits`, with 0 indicating
+            positions that should be assigned 0 probability in the output.
+        dim (int): Dimension over which to take softmax.
+        log_softmax (bool): Take log-softmax rather than regular softmax.
+            E.g., some PyTorch functions such as `F.nll_loss` expect log-softmax.
+    Returns:
+        probs (torch.Tensor): Result of taking masked softmax over the logits.
+    """
+    mask = mask.type(torch.float32)
+    masked_logits = mask * logits + (1 - mask) * -1e30
+    softmax_fn = F.log_softmax if log_softmax else F.softmax
+    probs = softmax_fn(masked_logits, dim)
+
+    return probs
+
+
+# All methods below this line are from the official SQuAD 2.0 eval script
+# https://worksheets.codalab.org/rest/bundles/0x6b567e1cf2e041ec80d7098f031c5c9e/contents/blob/
+def normalize_answer(s):
+    """Convert to lowercase and remove punctuation, articles and extra whitespace."""
+
+    def remove_articles(text):
+        regex = re.compile(r'\b(a|an|the)\b', re.UNICODE)
+        return re.sub(regex, ' ', text)
+
+    def white_space_fix(text):
+        return ' '.join(text.split())
+
+    def remove_punc(text):
+        exclude = set(string.punctuation)
+        return ''.join(ch for ch in text if ch not in exclude)
+
+    def lower(text):
+        return text.lower()
+
+    return white_space_fix(remove_articles(remove_punc(lower(s))))
+
+
+def get_tokens(s):
+    if not s:
+        return []
+    return normalize_answer(s).split()
+
+
+def compute_em(a_gold, a_pred):
+    return int(normalize_answer(a_gold) == normalize_answer(a_pred))
+
+
+def compute_f1(a_gold, a_pred):
+    gold_toks = get_tokens(a_gold)
+    pred_toks = get_tokens(a_pred)
+    common = Counter(gold_toks) & Counter(pred_toks)
+    num_same = sum(common.values())
+    if len(gold_toks) == 0 or len(pred_toks) == 0:
+        # If either is no-answer, then F1 is 1 if they agree, 0 otherwise
+        return int(gold_toks == pred_toks)
+    if num_same == 0:
+        return 0
+    precision = 1.0 * num_same / len(pred_toks)
+    recall = 1.0 * num_same / len(gold_toks)
+    f1 = (2 * precision * recall) / (precision + recall)
+
+    return f1

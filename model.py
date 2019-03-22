@@ -1,44 +1,65 @@
 # external libraries
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+
+import layers
 
 
-class CNN_Text(nn.Module):
+class BiDAF(nn.Module):
+    """Baseline BiDAF model for SQuAD.
+    Based on the paper:
+    "Bidirectional Attention Flow for Machine Comprehension"
+    by Minjoon Seo, Aniruddha Kembhavi, Ali Farhadi, Hannaneh Hajishirzi
+    (https://arxiv.org/abs/1611.01603).
+    Follows a high-level structure commonly found in SQuAD models:
+        - Embedding layer: Embed word indices to get word vectors.
+        - Encoder layer: Encode the embedded sequence.
+        - Attention layer: Apply an attention mechanism to the encoded sequence.
+        - Model encoder layer: Encode the sequence again.
+        - Output layer: Simple layer (e.g., fc + softmax) to get final outputs.
+    Args:
+        word_vectors (torch.Tensor): Pre-trained word vectors.
+        hidden_size (int): Number of features in the hidden state at each layer.
+        drop_prob (float): Dropout probability.
+    """
+    def __init__(self, word_vectors, hidden_size, drop_prob=0.):
+        super(BiDAF, self).__init__()
+        self.emb = layers.Embedding(word_vectors=word_vectors,
+                                    hidden_size=hidden_size,
+                                    drop_prob=drop_prob)
 
-    def __init__(self, features, embedding_matrix, output_dim):
-        super(CNN_Text, self).__init__()
+        self.enc = layers.RNNEncoder(input_size=hidden_size,
+                                     hidden_size=hidden_size,
+                                     num_layers=1,
+                                     drop_prob=drop_prob)
 
-        self.embedding_matrix = torch.from_numpy(embedding_matrix)
-        V = embedding_matrix.shape[0]
-        D = embedding_matrix.shape[1]
+        self.att = layers.BiDAFAttention(hidden_size=2 * hidden_size,
+                                         drop_prob=drop_prob)
 
-        self.embed = nn.Embedding(V, D, padding_idx=0)
-        self.embed.load_state_dict({'weight': self.embedding_matrix})
-        self.embed.weight.requires_grad = False
+        self.mod = layers.RNNEncoder(input_size=8 * hidden_size,
+                                     hidden_size=hidden_size,
+                                     num_layers=2,
+                                     drop_prob=drop_prob)
 
-        self.conv = nn.Conv1d(50, 100, 1)
-        self.dropout = nn.Dropout(0.3)
-        self.fc1 = nn.Linear(features, output_dim)
+        self.out = layers.BiDAFOutput(hidden_size=hidden_size,
+                                      drop_prob=drop_prob)
 
-        # Freeze weights
-        #for p in self.features.parameters():
-        #    p.required_grad = False
+    def forward(self, cw_idxs, qw_idxs):
+        c_mask = torch.zeros_like(cw_idxs) != cw_idxs
+        q_mask = torch.zeros_like(qw_idxs) != qw_idxs
+        c_len, q_len = c_mask.sum(-1), q_mask.sum(-1)
 
-    def conv_and_pool(self, x, conv):
-        x = F.relu(conv(x)).squeeze(3)
-        x = F.max_pool1d(x, x.size(2)).squeeze(2)
-        return x
+        c_emb = self.emb(cw_idxs)         # (batch_size, c_len, hidden_size)
+        q_emb = self.emb(qw_idxs)         # (batch_size, q_len, hidden_size)
 
-    def forward(self, context, question):
-        context = self.embed(context)
-        context = context.permute(0, 2, 1)
+        c_enc = self.enc(c_emb, c_len)    # (batch_size, c_len, 2 * hidden_size)
+        q_enc = self.enc(q_emb, q_len)    # (batch_size, q_len, 2 * hidden_size)
 
-        context = self.conv(context)
+        att = self.att(c_enc, q_enc,
+                       c_mask, q_mask)    # (batch_size, c_len, 8 * hidden_size)
 
-        context = context.view(context.size(0), -1)
-        context = self.dropout(context)
+        mod = self.mod(att, c_len)        # (batch_size, c_len, 2 * hidden_size)
 
-        out = self.fc1(context)
+        out = self.out(att, mod, c_mask)  # 2 tensors, each (batch_size, c_len)
 
         return out

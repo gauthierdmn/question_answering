@@ -15,7 +15,7 @@ import torch.nn.functional as F
 # internal utilities
 from config import train_dir, dev_dir, spacy_en
 
-nlp = spacy.load(spacy_en)
+nlp = spacy.load("en_core_web_sm")
 # tokenizer = Tokenizer(nlp.vocab)
 
 

@@ -13,7 +13,9 @@ glove = "/Users/gdamien/Data/glove.6B/glove.6B.{}d.txt"
 # preprocessing values
 max_words = 40000
 word_embedding_size = 300
-char_embedding_size = 64
+char_embedding_size = 8
+char_channel_width = 5
+char_channel_size = 100
 max_len_context = 400
 max_len_question = 50
 max_len_word = 25

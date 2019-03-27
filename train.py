@@ -37,23 +37,28 @@ writer = SummaryWriter(experiment_path)
 
 # open features file and store them in individual variables
 features = np.load(os.path.join(config.train_dir, "train_features.npz"))
-context = features["context_idxs"]
-question = features["question_idxs"]
+w_context = features["context_idxs"]
+c_context = features["context_char_idxs"]
+w_question = features["question_idxs"]
+c_question = features["question_char_idxs"]
 labels = features["label"]
 
 # load the embedding matrix created for our word vocabulary
 with open(os.path.join(config.train_dir, "word_embeddings.pkl"), "rb") as e:
-    embedding_matrix = pickle.load(e)
+    word_embedding_matrix = pickle.load(e)
+with open(os.path.join(config.train_dir, "char_embeddings.pkl"), "rb") as e:
+    char_embedding_matrix = pickle.load(e)
 
-embedding_matrix = torch.from_numpy(np.array(embedding_matrix)).type(torch.float32)
+word_embedding_matrix = torch.from_numpy(np.array(word_embedding_matrix)).type(torch.float32)
+char_embedding_matrix = torch.from_numpy(np.array(char_embedding_matrix)).type(torch.float32)
 
 print("Creating dataset...")
-part_a_dataset_train = SquadDataset(context, question, labels)
-part_a_dataset_valid = SquadDataset(context, question, labels)
+part_a_dataset_train = SquadDataset(w_context, c_context, w_question, c_question, labels)
+part_a_dataset_valid = SquadDataset(w_context, c_context, w_question, c_question, labels)
 print("Dataset sucessfully loaded!")
 
 # define a split for train/valid
-train_sampler, valid_sampler = custom_sampler(data=context, valid_size=hyper_params["valid_size"])
+train_sampler, valid_sampler = custom_sampler(data=w_context, valid_size=hyper_params["valid_size"])
 
 # load data generators
 print("Loading dataloader...")
@@ -74,7 +79,8 @@ print("Length of valid data loader is:", len(valid_dataloader))
 
 print("Loading model...")
 
-model = BiDAF(word_vectors=embedding_matrix,
+model = BiDAF(word_vectors=word_embedding_matrix,
+              char_vectors=char_embedding_matrix,
               hidden_size=config.hidden_size,
               drop_prob=config.drop_prob)
 model.to(device)
@@ -101,12 +107,14 @@ for epoch in range(hyper_params["num_epochs"]):
     model.train()
     train_losses = 0
     for i, batch in enumerate(train_dataloader):
-        context, question, label1, label2 = batch[0].long().to(device),\
-                                            batch[1].long().to(device),\
-                                            batch[2][:, 0].long().to(device),\
-                                            batch[2][:, 1].long().to(device)
+        w_context, c_context, w_question, c_question, label1, label2 = batch[0].long().to(device),\
+                                                                       batch[1].long().to(device), \
+                                                                       batch[2].long().to(device), \
+                                                                       batch[3].long().to(device), \
+                                                                       batch[4][:, 0].long().to(device),\
+                                                                       batch[4][:, 1].long().to(device)
         optimizer.zero_grad()
-        pred1, pred2 = model(context, question)
+        pred1, pred2 = model(w_context, c_context, w_question, c_question)
         loss = criterion(pred1, label1) + criterion(pred2, label1)
         train_losses += loss.item()
 

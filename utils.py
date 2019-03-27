@@ -15,7 +15,8 @@ import torch.nn.functional as F
 # internal utilities
 from config import train_dir, dev_dir, spacy_en
 
-nlp = spacy.load("en_core_web_sm")
+#nlp = spacy.load("en_core_web_sm")
+nlp = spacy.load(spacy_en)
 # tokenizer = Tokenizer(nlp.vocab)
 
 
@@ -54,7 +55,8 @@ def word_tokenize(sent):
     return [token.text for token in tokenizer(sent)]
 
 
-def build_vocab(context_filename, question_filename, vocab_filename, word2idx_filename, is_train=True, max_words=-1):
+def build_vocab(context_filename, question_filename, word_vocab_filename, word2idx_filename,
+                char_vocab_filename, char2idx_filename, is_train=True, max_words=-1):
     # select the directory we want to create the vocabulary from
     directory = train_dir if is_train else dev_dir
 
@@ -66,36 +68,46 @@ def build_vocab(context_filename, question_filename, vocab_filename, word2idx_fi
 
     # clean and tokenize the texts
     words = [w.lower() for doc in context_file + question_file for w in word_tokenize(clean_text(doc))]
-    # create a dictionary with word frequencies
-    vocab = Counter(words)
+    chars = [c for w in words for c in list(w)]
+    # create a dictionary with word and char frequencies
+    word_vocab = Counter(words)
+    char_vocab = Counter(chars)
     # put them in a list ordered by frequency
-    vocab = ['--NULL--'] + ['--UNK--'] + sorted(vocab, key=vocab.get, reverse=True)
-    # limit the vocabulary to top max_words
-    vocab = vocab[:max_words]
-    # get the word to ID dictionary mapping
-    word2idx = dict([(x, y) for (y, x) in enumerate(vocab)])
+    word_vocab = ['--NULL--'] + ['--UNK--'] + sorted(word_vocab, key=word_vocab.get, reverse=True)
+    char_vocab = ['--NULL--'] + ['--UNK--'] + sorted(char_vocab, key=char_vocab.get, reverse=True)
+    # limit the word vocabulary to top max_words
+    word_vocab = word_vocab[:max_words]
+    # get the word and char to ID dictionary mapping
+    word2idx = dict([(x, y) for (y, x) in enumerate(word_vocab)])
+    char2idx = dict([(x, y) for (y, x) in enumerate(char_vocab)])
 
     # save those files
-    with open(os.path.join(directory, vocab_filename), 'wb') as v, \
-         open(os.path.join(directory, word2idx_filename), 'wb') as d:
-        pickle.dump(vocab, v)
-        pickle.dump(word2idx, d)
+    with open(os.path.join(directory, word_vocab_filename), 'wb') as wv, \
+         open(os.path.join(directory, word2idx_filename), 'wb') as wd, \
+        open(os.path.join(directory, char_vocab_filename), 'wb') as cv, \
+        open(os.path.join(directory, char2idx_filename), 'wb') as cd:
+        pickle.dump(word_vocab, wv)
+        pickle.dump(word2idx, wd)
+        pickle.dump(char_vocab, cv)
+        pickle.dump(char2idx, cd)
 
     print("Vocabulary created successfully.")
-    return vocab, word2idx
+    return word_vocab, word2idx, char_vocab, char2idx
 
 
-def build_word_embeddings(vocab, embedding_path="", vec_size=50):
-    # Get the path associated to the embedding size we want
-    embedding_path = embedding_path.format(vec_size)
+def build_embeddings(vocab, embedding_path="", output_path="", vec_size=50):
     embedding_dict = {}
-    with open(embedding_path, "r", encoding="utf-8") as f:
-        for line in f:
-            values = line.split()
-            word = values[0]
-            vector = np.asarray(values[1:], dtype='float32')
-            if word in vocab:
-                embedding_dict[word] = vector
+    # Load pretrained embeddings if an embedding path is provided
+    if embedding_path:
+        # Get the path associated to the embedding size we want
+        embedding_path = embedding_path.format(vec_size)
+        with open(embedding_path, "r", encoding="utf-8") as f:
+            for line in f:
+                values = line.split()
+                word = values[0]
+                vector = np.asarray(values[1:], dtype='float32')
+                if word in vocab:
+                    embedding_dict[word] = vector
 
     embedding_dict['--NULL--'] = np.asarray([0. for _ in range(vec_size)])
     embedding_dict['--UNK--'] = np.asarray([0. for _ in range(vec_size)])
@@ -107,16 +119,15 @@ def build_word_embeddings(vocab, embedding_path="", vec_size=50):
         else:
             count += 1
             embedding_matrix.append(np.random.normal(0, 0.1, vec_size))
-    print("Did not find {} words in GloVe out of {} words.".format(count, len(vocab)))
     # Save the embedding matrix
-    with open(os.path.join(train_dir, "embeddings.pkl"), "wb") as e:
+    with open(os.path.join(train_dir, output_path), "wb") as e:
         pickle.dump(embedding_matrix, e)
 
 
 def save_checkpoint(state, is_best, filename='/output/checkpoint.pkl'):
     """Save checkpoint if a new best is achieved"""
     if is_best:
-        print ("=> Saving a new best model.")
+        print("=> Saving a new best model.")
         torch.save(state, filename)  # save checkpoint
     else:
         print("=> Validation loss did not improve.")

@@ -10,7 +10,7 @@ import urllib.request
 
 # internal utilities
 import config
-from utils import tokenizer, clean_text, word_tokenize, build_vocab, build_word_embeddings
+from utils import tokenizer, clean_text, word_tokenize, build_vocab, build_embeddings
 
 # URL to download SQuAD dataset 2.0
 url = "https://rajpurkar.github.io/SQuAD-explorer/dataset"
@@ -126,25 +126,31 @@ class SquadPreprocessor:
         self.split_data(train_filename)
         self.split_data(dev_filename)
 
-    def extract_features(self, max_len=config.max_len_context, is_train=True):
+    def extract_features(self, max_len_context=config.max_len_context, max_len_question=config.max_len_question,
+                         max_len_word=config.max_len_word, is_train=True):
         # choose the right directory
         directory = 'train' if is_train else 'dev'
 
         # download vocabulary if not done yet
-        vocab, word2idx = build_vocab(directory + '.context', directory + '.question', 'vocab.pkl', 'word2idx.pkl',
-                               is_train=is_train, max_words=config.max_words)
+        word_vocab, word2idx, char_vocab, char2idx = build_vocab(directory + ".context", directory + ".question",
+                                                                 "word_vocab.pkl", "word2idx.pkl", "char_vocab.pkl",
+                                                                 "char2idx.pkl", is_train=is_train,
+                                                                 max_words=config.max_words)
 
-        # create an embedding matrix from the vocabulary with pretrained vectors (GloVe)
-        build_word_embeddings(vocab, embedding_path=config.glove, vec_size=config.embedding_size)
+        # create an embedding matrix from the vocabulary with pretrained vectors (GloVe) for words
+        build_embeddings(word_vocab, embedding_path=config.glove, output_path="word_embeddings.pkl",
+                         vec_size=config.word_embedding_size)
+        build_embeddings(char_vocab, embedding_path="", output_path="char_embeddings.pkl",
+                         vec_size=config.char_embedding_size)
 
         # load context
-        with open(os.path.join(self.data_dir, directory, directory + '.context'), 'r') as c:
+        with open(os.path.join(self.data_dir, directory, directory + ".context"), "r") as c:
             context = c.readlines()
         # load questions
-        with open(os.path.join(self.data_dir, directory, directory + '.question'), 'r') as q:
+        with open(os.path.join(self.data_dir, directory, directory + ".question"), "r") as q:
             question = q.readlines()
         # load answer
-        with open(os.path.join(self.data_dir, directory, directory + '.labels'), 'r') as l:
+        with open(os.path.join(self.data_dir, directory, directory + ".labels"), "r") as l:
             labels = l.readlines()
 
         # clean and tokenize context and question
@@ -153,42 +159,59 @@ class SquadPreprocessor:
         labels = [np.array(l.strip('\n').split(), dtype=np.int32) for l in labels]
 
         print("Number of context paragraphs before filtering:", len(context))
-        filter = [len(c) < max_len for c in context]
-        context, question, labels = zip(*[(np.array(c), np.array(q), np.array(l)) for c, q, l, f in zip(
+        filter = [len(c) < max_len_context and max([len(w) for w in c]) < max_len_word and
+                  len(q) < max_len_question and max([len(w) for w in q]) < max_len_word
+                  for c, q in zip(context, question)]
+        context, question, labels = zip(*[(c, q, l) for c, q, l, f in zip(
                                           context, question, labels, filter) if f])
         print("Number of context paragraphs after filtering ", len(context))
 
         # replace the tokenized words with their associated ID in the vocabulary
-        context_features = []
-        question_features = []
+        context_idxs = []
+        context_char_idxs = []
+        question_idxs = []
+        question_char_idxs = []
         for i, (c, q) in tqdm.tqdm(enumerate(zip(context, question))):
             # create empty numpy arrays
-            context_idxs = np.zeros([max_len], dtype=np.int32)
-            question_idxs = np.zeros([max_len], dtype=np.int32)
-            # replace 0 values with word IDs
-            for j, w in enumerate(c):
-                if w in word2idx:
-                    context_idxs[j] = word2idx[w]
-                else:
-                    context_idxs[j] = 1
-            for j, w in enumerate(q):
-                if w in word2idx:
-                    question_idxs[j] = word2idx[w]
-                else:
-                    context_idxs[j] = 1
-            # put the features in the features list
-            context_features.append(context_idxs)
-            question_features.append(question_idxs)
+            context_idx = np.zeros([max_len_context], dtype=np.int32)
+            question_idx = np.zeros([max_len_question], dtype=np.int32)
+            context_char_idx = np.zeros([max_len_context, max_len_word], dtype=np.int32)
+            question_char_idx = np.zeros([max_len_question, max_len_word], dtype=np.int32)
 
-        # save context as numpy arrays
-        with open(os.path.join(self.data_dir, directory, directory + '_context.pkl'), 'wb') as c:
-            pickle.dump(context_features, c)
-        # save question as numpy arrays
-        with open(os.path.join(self.data_dir, directory, directory + '_question.pkl'), 'wb') as q:
-            pickle.dump(question_features, q)
-        # save labels as numpy arrays
-        with open(os.path.join(self.data_dir, directory, directory + '_labels.pkl'), 'wb') as l:
-            pickle.dump(labels, l)
+            # replace 0 values with word and char IDs
+            for j, word in enumerate(c):
+                if word in word2idx:
+                    context_idx[j] = word2idx[word]
+                else:
+                    context_idx[j] = 1
+                for k, char in enumerate(word):
+                    if char in char2idx:
+                        context_char_idx[j, k] = char2idx[char]
+                    else:
+                        context_char_idx[j, k] = 1
+            context_idxs.append(context_idx)
+            context_char_idxs.append(context_char_idx)
+
+            for j, word in enumerate(q):
+                if word in word2idx:
+                    question_idx[j] = word2idx[word]
+                else:
+                    context_idx[j] = 1
+                for k, char in enumerate(word):
+                    if char in char2idx:
+                        question_char_idx[j, k] = char2idx[char]
+                    else:
+                        question_char_idx[j, k] = 1
+            question_idxs.append(context_idx)
+            question_char_idxs.append(context_char_idx)
+
+        # save features as numpy arrays
+        np.savez(os.path.join(self.data_dir, directory, directory + "_features"),
+                 context_idxs=np.array(context_idxs),
+                 context_char_idxs=np.array(context_char_idxs),
+                 question_idxs=np.array(question_idxs),
+                 question_char_idxs=np.array(question_char_idxs),
+                 label=np.array(labels))
 
 
 if __name__ == "__main__":
@@ -201,4 +224,5 @@ if __name__ == "__main__":
     p = SquadPreprocessor(config.data_dir, train_filename, dev_filename, tokenizer)
     p.preprocess()
 
-    p.extract_features(max_len=config.max_len_context, is_train=True)
+    p.extract_features(max_len_context=config.max_len_context, max_len_question=config.max_len_question,
+                       max_len_word=config.max_len_word, is_train=True)

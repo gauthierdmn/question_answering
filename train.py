@@ -15,13 +15,13 @@ from utils import custom_sampler, save_checkpoint
 
 # hyper-parameters setup
 hyper_params = {
-    'num_epochs': config.num_epochs,
-    'batch_size': config.batch_size,
-    'valid_size': config.valid_size,
-    'learning_rate': config.learning_rate,
-    'output_dim': config.output_dim,
-    'cuda': config.cuda,
-    'pretrained': config.pretrained
+    "num_epochs": config.num_epochs,
+    "batch_size": config.batch_size,
+    "valid_size": config.valid_size,
+    "learning_rate": config.learning_rate,
+    "output_dim": config.output_dim,
+    "cuda": config.cuda,
+    "pretrained": config.pretrained
 }
 
 device = torch.device("cuda" if hyper_params["cuda"] else "cpu")
@@ -30,23 +30,19 @@ torch.manual_seed(42)
 # define a path to save experiment logs
 experiment_path = "output/{}".format(config.exp)
 if not os.path.exists(experiment_path):
-    os.makedir(experiment_path)
+    os.mkdir(experiment_path)
 
 # start TensorboardX writer
 writer = SummaryWriter(experiment_path)
 
-# open labels file
-with open(os.path.join(config.train_dir, "train_context.pkl"), "rb") as c:
-    context = pickle.load(c)
-# open labels file
-with open(os.path.join(config.train_dir, "train_question.pkl"), "rb") as q:
-    question = pickle.load(q)
-# open labels file
-with open(os.path.join(config.train_dir, "train_labels.pkl"), "rb") as l:
-    labels = pickle.load(l)
+# open features file and store them in individual variables
+features = np.load(os.path.join(config.train_dir, "train_features.npz"))
+context = features["context_idxs"]
+question = features["question_idxs"]
+labels = features["label"]
 
-# load the embedding matrix created for our vocabulary
-with open(os.path.join(config.train_dir, "embeddings.pkl"), "rb") as e:
+# load the embedding matrix created for our word vocabulary
+with open(os.path.join(config.train_dir, "word_embeddings.pkl"), "rb") as e:
     embedding_matrix = pickle.load(e)
 
 embedding_matrix = torch.from_numpy(np.array(embedding_matrix)).type(torch.float32)
@@ -62,14 +58,14 @@ train_sampler, valid_sampler = custom_sampler(data=context, valid_size=hyper_par
 # load data generators
 print("Loading dataloader...")
 train_dataloader = DataLoader(part_a_dataset_train,
-                        shuffle=False,
-                        batch_size=hyper_params["batch_size"],
-                        sampler=train_sampler, num_workers=4)
+                              shuffle=False,
+                              batch_size=hyper_params["batch_size"],
+                              sampler=train_sampler, num_workers=4)
 
 valid_dataloader = DataLoader(part_a_dataset_valid,
-                        shuffle=False,
-                        batch_size=hyper_params["batch_size"],
-                        sampler=valid_sampler)
+                              shuffle=False,
+                              batch_size=hyper_params["batch_size"],
+                              sampler=valid_sampler)
 
 print("Dataloader sucessfully loaded!")
 
@@ -91,8 +87,8 @@ optimizer = torch.optim.Adadelta(model.parameters(), hyper_params["learning_rate
 
 # best loss so far
 if hyper_params["pretrained"]:
-    best_valid_loss = torch.load(os.path.join(experiment_path, "model.pkl")["best_valid_loss"]
-    epoch_checkpoint = torch.load(os.path.join(experiment_path, "model_last_checkpoint.pkl")["epoch"]
+    best_valid_loss = torch.load(os.path.join(experiment_path, "model.pkl"))["best_valid_loss"]
+    epoch_checkpoint = torch.load(os.path.join(experiment_path, "model_last_checkpoint.pkl"))["epoch"]
 else:
     best_valid_loss = 100
     epoch_checkpoint = 0
@@ -117,13 +113,13 @@ for epoch in range(hyper_params["num_epochs"]):
         loss.backward()
         optimizer.step()
 
-        #if (i + 1) % 1 == 0:
-        #    print('Epoch [%d/%d], Iter [%d/%d] Loss: %.4f'
-        #          % (epoch + 1, hyper_params['num_epochs'], i + 1, len(train_dataloader), loss.item()))
+        if (i + 1) % 1 == 0:
+            print("Epoch [%d/%d], Iter [%d/%d] Loss: %.4f"
+                  % (epoch + 1, hyper_params["num_epochs"], i + 1, len(train_dataloader), loss.item()))
 
     writer.add_scalars("train", np.round(train_losses / len(train_dataloader), 2), epoch + 1)
     print("Train loss of the model at epoch {} is: {}".format(epoch + 1, np.round(train_losses /
-                                                                                         len(train_dataloader), 2)))
+                                                                                  len(train_dataloader), 2)))
 
     model.eval()
     valid_losses = 0
@@ -151,7 +147,7 @@ for epoch in range(hyper_params["num_epochs"]):
         "epoch": epoch + 1 + epoch_checkpoint,
         "state_dict": model.state_dict(),
         "best_valid_loss": np.round(valid_losses / len(valid_dataloader), 2)
-    }, True, os.path.join(experiment_path, "model_last_checkpoint.pkl")
+    }, True, os.path.join(experiment_path, "model_last_checkpoint.pkl"))
 
     # save model with best validation error
     is_best = bool(np.round(valid_losses / len(valid_dataloader), 2) < best_valid_loss)
@@ -160,7 +156,7 @@ for epoch in range(hyper_params["num_epochs"]):
         "epoch": epoch + 1 + epoch_checkpoint,
         "state_dict": model.state_dict(),
         "best_valid_loss": best_valid_loss
-    }, is_best, os.path.join(experiment_path, "model.pkl")
+    }, is_best, os.path.join(experiment_path, "model.pkl"))
 
 # export scalar data to JSON for external processing
 writer.export_scalars_to_json(os.path.join(experiment_path, "all_scalars.json"))

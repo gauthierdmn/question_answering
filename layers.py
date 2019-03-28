@@ -23,11 +23,11 @@ class Embedding(nn.Module):
     def __init__(self, word_vectors, char_vectors, hidden_size, drop_prob):
         super(Embedding, self).__init__()
         self.drop_prob = drop_prob
-        self.w_embed = nn.Embedding.from_pretrained(word_vectors)
-        self.c_embed = nn.Embedding.from_pretrained(char_vectors)
+        self.w_embed = nn.Embedding.from_pretrained(word_vectors, freeze=True)
+        self.c_embed = nn.Embedding.from_pretrained(char_vectors, freeze=False)
         self.proj = nn.Linear(word_vectors.size(1), hidden_size, bias=False)
         self.char_conv = nn.Conv2d(1, config.char_channel_size, (config.char_embedding_size, config.char_channel_width))
-        self.hwy = HighwayEncoder(2, hidden_size)
+        self.hwy = HighwayEncoder(2, hidden_size * 2)
 
     def forward(self, x, y):
         batch_size = x.size(0)
@@ -62,9 +62,9 @@ class HighwayEncoder(nn.Module):
     """
     def __init__(self, num_layers, hidden_size):
         super(HighwayEncoder, self).__init__()
-        self.transforms = nn.ModuleList([nn.Linear(hidden_size * 2, hidden_size * 2)
+        self.transforms = nn.ModuleList([nn.Linear(hidden_size, hidden_size)
                                          for _ in range(num_layers)])
-        self.gates = nn.ModuleList([nn.Linear(hidden_size * 2, hidden_size * 2)
+        self.gates = nn.ModuleList([nn.Linear(hidden_size, hidden_size)
                                     for _ in range(num_layers)])
 
     def forward(self, x):

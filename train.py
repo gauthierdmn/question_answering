@@ -20,7 +20,6 @@ hyper_params = {
     "batch_size": config.batch_size,
     "valid_size": config.valid_size,
     "learning_rate": config.learning_rate,
-    "output_dim": config.output_dim,
     "cuda": config.cuda,
     "pretrained": config.pretrained
 }
@@ -38,11 +37,11 @@ writer = SummaryWriter(experiment_path)
 
 # open features file and store them in individual variables
 features = np.load(os.path.join(config.train_dir, "train_features.npz"))
-w_context = features["context_idxs"][:100]
-c_context = features["context_char_idxs"][:100]
-w_question = features["question_idxs"][:100]
-c_question = features["question_char_idxs"][:100]
-labels = features["label"][:100]
+w_context = features["context_idxs"]
+c_context = features["context_char_idxs"]
+w_question = features["question_idxs"]
+c_question = features["question_char_idxs"]
+labels = features["label"]
 
 # load the embedding matrix created for our word vocabulary
 with open(os.path.join(config.train_dir, "word_embeddings.pkl"), "rb") as e:
@@ -118,21 +117,21 @@ for epoch in range(hyper_params["num_epochs"]):
                                                                        batch[4][:, 1].long().to(device)
         optimizer.zero_grad()
         pred1, pred2 = model(w_context, c_context, w_question, c_question)
-        loss = criterion(pred1, label1) + criterion(pred2, label1)
+        loss = criterion(pred1, label1) + criterion(pred2, label2)
         train_losses += loss.item()
         train_ems += exact_match(pred1, pred2, label1, label2)
 
         loss.backward()
         optimizer.step()
 
-        if (i + 1) % 1 == 0:
-            print("Epoch [%d/%d], Iter [%d/%d] Loss: %.4f"
-                  % (epoch + 1, hyper_params["num_epochs"], i + 1, len(train_dataloader), loss.item()))
-            print("Number of exact matches in batch:", exact_match(pred1, pred2, label1, label2))
+#        if (i + 1) % 1 == 0:
+#            print("Epoch [%d/%d], Iter [%d/%d] Loss: %.4f"
+#                  % (epoch + 1, hyper_params["num_epochs"], i + 1, len(train_dataloader), loss.item()))
+#            print("Number of exact matches in batch:", exact_match(pred1, pred2, label1, label2))
 
-    writer.add_scalars("train_loss", np.round(train_losses / len(train_dataloader), 2), epoch + 1)
-    writer.add_scalars("train_EM", np.round(train_ems / len(train_dataloader), 2), epoch + 1)
-
+    writer.add_scalars("train", {"loss": np.round(train_losses / len(train_dataloader), 2),
+                       "EM": np.round(train_ems / len(train_dataloader), 2),
+                       "epoch": epoch + 1})
     print("Train loss of the model at epoch {} is: {}".format(epoch + 1, np.round(train_losses /
                                                                                   len(train_dataloader), 2)))
     print("Train EM of the model at epoch {} is: {}".format(epoch + 1, np.round(train_ems /
@@ -140,26 +139,22 @@ for epoch in range(hyper_params["num_epochs"]):
 
     model.eval()
     valid_losses = 0
-    valid_ems = 0
-
     with torch.no_grad():
         for i, batch in enumerate(valid_dataloader):
-            context, question, label1, label2 = batch[0].long().to(device), \
+            w_context, c_context, w_question, c_question, label1, label2 = batch[0].long().to(device), \
                                                 batch[1].long().to(device), \
-                                                batch[2][:, 0].long().to(device), \
-                                                batch[2][:, 1].long().to(device)
-            pred1, pred2 = model(context, question)
-            loss = criterion(pred1, label1) + criterion(pred2, label1)
+                                                batch[2].long().to(device), \
+                                                batch[3].long().to(device), \
+                                                batch[4][:, 0].long().to(device), \
+                                                batch[4][:, 1].long().to(device)
+            pred1, pred2 = model(w_context, c_context, w_question, c_question)
+            loss = criterion(pred1, label1) + criterion(pred2, label2)
             valid_losses += loss.item()
-            valid_ems += exact_match(pred1, pred2, label1, label2)
 
-        writer.add_scalars("valid_loss", np.round(valid_losses / len(valid_dataloader), 2), epoch + 1)
-        writer.add_scalars("valid_EM", np.round(valid_ems / len(valid_dataloader), 2), epoch + 1)
-
+        writer.add_scalars("valid", {"loss": np.round(valid_losses / len(valid_dataloader), 2),
+                          "epoch": epoch + 1})
         print("Validation loss of the model at epoch {} is: {}".format(epoch + 1, np.round(valid_losses /
                                                                                            len(valid_dataloader), 2)))
-        print("Validation EM of the model at epoch {} is: {}".format(epoch + 1, np.round(train_ems /
-                                                                                         len(valid_dataloader), 2)))
 
     # save last model weights
     save_checkpoint({

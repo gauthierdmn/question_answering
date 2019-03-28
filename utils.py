@@ -16,8 +16,8 @@ import torch.nn as nn
 # internal utilities
 import config
 
-#nlp = spacy.load("en_core_web_sm")
-nlp = spacy.load(config.spacy_en)
+nlp = spacy.load("en_core_web_sm")
+#nlp = spacy.load(config.spacy_en)
 # tokenizer = Tokenizer(nlp.vocab)
 device = torch.device("cuda" if config.cuda else "cpu")
 
@@ -184,8 +184,10 @@ def to_ids(pred1, pred2):
 
 def exact_match(p1, p2, l1, l2):
     p1, p2 = to_ids(p1, p2)
-    return sum([l1.numpy()[i] == p1.numpy()[i] and l2.numpy()[i] == p2.numpy()[i] for i in range(len(l1))])
-
+    if device == "cpu":
+        return sum([l1.numpy()[i] == p1.numpy()[i] and l2.numpy()[i] == p2.numpy()[i] for i in range(len(l1))])
+    else:
+        return sum([l1.cpu().numpy()[i] == p1.cpu().numpy()[i] and l2.cpu().numpy()[i] == p2.cpu().numpy()[i] for i in range(len(l1))])
 
 # All methods below this line are from the official SQuAD 2.0 eval script
 # https://worksheets.codalab.org/rest/bundles/0x6b567e1cf2e041ec80d7098f031c5c9e/contents/blob/

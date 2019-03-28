@@ -11,13 +11,15 @@ from spacy.lang.en import English
 import torch
 from torch.utils.data.sampler import SubsetRandomSampler
 import torch.nn.functional as F
+import torch.nn as nn
 
 # internal utilities
-from config import train_dir, dev_dir, spacy_en
+import config
 
 #nlp = spacy.load("en_core_web_sm")
-nlp = spacy.load(spacy_en)
+nlp = spacy.load(config.spacy_en)
 # tokenizer = Tokenizer(nlp.vocab)
+device = torch.device("cuda" if config.cuda else "cpu")
 
 
 def custom_en_tokenizer(en_vocab):
@@ -58,7 +60,7 @@ def word_tokenize(sent):
 def build_vocab(context_filename, question_filename, word_vocab_filename, word2idx_filename,
                 char_vocab_filename, char2idx_filename, is_train=True, max_words=-1):
     # select the directory we want to create the vocabulary from
-    directory = train_dir if is_train else dev_dir
+    directory = config.train_dir if is_train else config.dev_dir
 
     # load the context and question files
     with open(os.path.join(directory, context_filename), 'r', encoding="utf-8") as context,\
@@ -120,11 +122,11 @@ def build_embeddings(vocab, embedding_path="", output_path="", vec_size=50):
             count += 1
             embedding_matrix.append(np.random.normal(0, 0.1, vec_size))
     # Save the embedding matrix
-    with open(os.path.join(train_dir, output_path), "wb") as e:
+    with open(os.path.join(config.train_dir, output_path), "wb") as e:
         pickle.dump(embedding_matrix, e)
 
 
-def save_checkpoint(state, is_best, filename='/output/checkpoint.pkl'):
+def save_checkpoint(state, is_best, filename="/output/checkpoint.pkl"):
     """Save checkpoint if a new best is achieved"""
     if is_best:
         print("=> Saving a new best model.")
@@ -166,6 +168,23 @@ def masked_softmax(logits, mask, dim=-1, log_softmax=False):
     probs = softmax_fn(masked_logits, dim)
 
     return probs
+
+
+def to_ids(pred1, pred2):
+    batch_size, c_len = pred1.size()
+    ls = nn.LogSoftmax(dim=1)
+    mask = (torch.ones(c_len, c_len) * float("-inf")).to(device).tril(-1).unsqueeze(0).expand(batch_size, -1, -1)
+    score = (ls(pred1).unsqueeze(2) + ls(pred2).unsqueeze(1)) + mask
+    score, s_idx = score.max(dim=1)
+    score, e_idx = score.max(dim=1)
+    s_idx = torch.gather(s_idx, 1, e_idx.view(-1, 1)).squeeze()
+
+    return s_idx, e_idx
+
+
+def exact_match(p1, p2, l1, l2):
+    p1, p2 = to_ids(p1, p2)
+    return sum([l1.numpy()[i] == p1.numpy()[i] and l2.numpy()[i] == p2.numpy()[i] for i in range(len(l1))])
 
 
 # All methods below this line are from the official SQuAD 2.0 eval script

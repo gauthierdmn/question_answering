@@ -4,6 +4,7 @@ import pickle
 import os
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tensorboardX import SummaryWriter
 
@@ -11,7 +12,7 @@ from tensorboardX import SummaryWriter
 import config
 from model import BiDAF
 from data_loader import SquadDataset
-from utils import custom_sampler, save_checkpoint
+from utils import custom_sampler, save_checkpoint, exact_match
 
 # hyper-parameters setup
 hyper_params = {
@@ -37,11 +38,11 @@ writer = SummaryWriter(experiment_path)
 
 # open features file and store them in individual variables
 features = np.load(os.path.join(config.train_dir, "train_features.npz"))
-w_context = features["context_idxs"]
-c_context = features["context_char_idxs"]
-w_question = features["question_idxs"]
-c_question = features["question_char_idxs"]
-labels = features["label"]
+w_context = features["context_idxs"][:100]
+c_context = features["context_char_idxs"][:100]
+w_question = features["question_idxs"][:100]
+c_question = features["question_char_idxs"][:100]
+labels = features["label"][:100]
 
 # load the embedding matrix created for our word vocabulary
 with open(os.path.join(config.train_dir, "word_embeddings.pkl"), "rb") as e:
@@ -49,6 +50,7 @@ with open(os.path.join(config.train_dir, "word_embeddings.pkl"), "rb") as e:
 with open(os.path.join(config.train_dir, "char_embeddings.pkl"), "rb") as e:
     char_embedding_matrix = pickle.load(e)
 
+# transform them into Tensors
 word_embedding_matrix = torch.from_numpy(np.array(word_embedding_matrix)).type(torch.float32)
 char_embedding_matrix = torch.from_numpy(np.array(char_embedding_matrix)).type(torch.float32)
 
@@ -106,6 +108,7 @@ for epoch in range(hyper_params["num_epochs"]):
     print("##### epoch {:2d}".format(epoch))
     model.train()
     train_losses = 0
+    train_ems = 0
     for i, batch in enumerate(train_dataloader):
         w_context, c_context, w_question, c_question, label1, label2 = batch[0].long().to(device),\
                                                                        batch[1].long().to(device), \
@@ -117,6 +120,7 @@ for epoch in range(hyper_params["num_epochs"]):
         pred1, pred2 = model(w_context, c_context, w_question, c_question)
         loss = criterion(pred1, label1) + criterion(pred2, label1)
         train_losses += loss.item()
+        train_ems += exact_match(pred1, pred2, label1, label2)
 
         loss.backward()
         optimizer.step()
@@ -124,17 +128,19 @@ for epoch in range(hyper_params["num_epochs"]):
         if (i + 1) % 1 == 0:
             print("Epoch [%d/%d], Iter [%d/%d] Loss: %.4f"
                   % (epoch + 1, hyper_params["num_epochs"], i + 1, len(train_dataloader), loss.item()))
+            print("Number of exact matches in batch:", exact_match(pred1, pred2, label1, label2))
 
-    writer.add_scalars("train", np.round(train_losses / len(train_dataloader), 2), epoch + 1)
+    writer.add_scalars("train_loss", np.round(train_losses / len(train_dataloader), 2), epoch + 1)
+    writer.add_scalars("train_EM", np.round(train_ems / len(train_dataloader), 2), epoch + 1)
+
     print("Train loss of the model at epoch {} is: {}".format(epoch + 1, np.round(train_losses /
                                                                                   len(train_dataloader), 2)))
+    print("Train EM of the model at epoch {} is: {}".format(epoch + 1, np.round(train_ems /
+                                                                                len(train_dataloader), 2)))
 
     model.eval()
     valid_losses = 0
-    n_samples = 0
-    list_preds = []
-    list_labels = []
-    list_audio = []
+    valid_ems = 0
 
     with torch.no_grad():
         for i, batch in enumerate(valid_dataloader):
@@ -145,9 +151,14 @@ for epoch in range(hyper_params["num_epochs"]):
             pred1, pred2 = model(context, question)
             loss = criterion(pred1, label1) + criterion(pred2, label1)
             valid_losses += loss.item()
+            valid_ems += exact_match(pred1, pred2, label1, label2)
 
-        writer.add_scalars("valid", np.round(valid_losses / len(valid_dataloader), 2), epoch + 1)
+        writer.add_scalars("valid_loss", np.round(valid_losses / len(valid_dataloader), 2), epoch + 1)
+        writer.add_scalars("valid_EM", np.round(valid_ems / len(valid_dataloader), 2), epoch + 1)
+
         print("Validation loss of the model at epoch {} is: {}".format(epoch + 1, np.round(valid_losses /
+                                                                                           len(valid_dataloader), 2)))
+        print("Validation EM of the model at epoch {} is: {}".format(epoch + 1, np.round(train_ems /
                                                                                          len(valid_dataloader), 2)))
 
     # save last model weights

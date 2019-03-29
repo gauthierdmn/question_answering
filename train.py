@@ -2,6 +2,7 @@
 import numpy as np
 import pickle
 import os
+import json
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -13,16 +14,33 @@ from model import BiDAF
 from data_loader import SquadDataset
 from utils import custom_sampler, save_checkpoint, exact_match
 
+# preprocessing values used for training
+prepro_params = {
+    "max_words": config.max_words,
+    "word_embedding_size": config.word_embedding_size,
+    "char_embedding_size": config.char_embedding_size,
+    "max_len_context": config.max_len_context,
+    "max_len_question": config.max_len_question,
+    "max_len_word": config.max_len_word
+}
+
 # hyper-parameters setup
 hyper_params = {
     "num_epochs": config.num_epochs,
     "batch_size": config.batch_size,
     "valid_size": config.valid_size,
     "learning_rate": config.learning_rate,
+    "hidden_size": config.hidden_size,
+    "char_channel_width": config.char_channel_width,
+    "char_channel_size": config.char_channel_size,
+    "drop_prob": config.drop_prob,
     "cuda": config.cuda,
     "pretrained": config.pretrained
 }
 
+experiment_params = {"preprocessing": prepro_params, "model": hyper_params}
+
+# train on GPU if CUDA variable is set to True (a GPU with CUDA is needed to do so)
 device = torch.device("cuda" if hyper_params["cuda"] else "cpu")
 torch.manual_seed(42)
 
@@ -30,6 +48,10 @@ torch.manual_seed(42)
 experiment_path = "output/{}".format(config.exp)
 if not os.path.exists(experiment_path):
     os.mkdir(experiment_path)
+
+# save the preprocesisng and model parameters used for this training experiemnt
+with open(os.path.join(experiment_path, "config_{}.json".format(config.exp)), "w") as f:
+    json.dump(experiment_params, f)
 
 # start TensorboardX writer
 writer = SummaryWriter(experiment_path)
@@ -52,42 +74,35 @@ with open(os.path.join(config.train_dir, "char_embeddings.pkl"), "rb") as e:
 word_embedding_matrix = torch.from_numpy(np.array(word_embedding_matrix)).type(torch.float32)
 char_embedding_matrix = torch.from_numpy(np.array(char_embedding_matrix)).type(torch.float32)
 
-print("Creating dataset...")
-part_a_dataset_train = SquadDataset(w_context, c_context, w_question, c_question, labels)
-part_a_dataset_valid = SquadDataset(w_context, c_context, w_question, c_question, labels)
-print("Dataset sucessfully loaded!")
+# load datasets
+train_dataset = SquadDataset(w_context, c_context, w_question, c_question, labels)
+valid_dataset = SquadDataset(w_context, c_context, w_question, c_question, labels)
 
 # define a split for train/valid
 train_sampler, valid_sampler = custom_sampler(data=w_context, valid_size=hyper_params["valid_size"])
 
 # load data generators
-print("Loading dataloader...")
-train_dataloader = DataLoader(part_a_dataset_train,
+train_dataloader = DataLoader(train_dataset,
                               shuffle=False,
                               batch_size=hyper_params["batch_size"],
                               sampler=train_sampler, num_workers=4)
 
-valid_dataloader = DataLoader(part_a_dataset_valid,
+valid_dataloader = DataLoader(valid_dataset,
                               shuffle=False,
                               batch_size=hyper_params["batch_size"],
                               sampler=valid_sampler)
 
-print("Dataloader sucessfully loaded!")
-
 print("Length of training data loader is:", len(train_dataloader))
 print("Length of valid data loader is:", len(valid_dataloader))
 
-print("Loading model...")
-
+# load the model
 model = BiDAF(word_vectors=word_embedding_matrix,
               char_vectors=char_embedding_matrix,
-              hidden_size=config.hidden_size,
-              drop_prob=config.drop_prob)
+              hidden_size=hyper_params["hidden_size"],
+              drop_prob=hyper_params["drop_prob"])
 model.to(device)
 
-print("Model successfully loaded!")
-
-# loss and optimizer
+# define loss and optimizer
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adadelta(model.parameters(), hyper_params["learning_rate"], weight_decay=1e-4)
 
@@ -95,15 +110,15 @@ optimizer = torch.optim.Adadelta(model.parameters(), hyper_params["learning_rate
 if hyper_params["pretrained"]:
     best_valid_loss = torch.load(os.path.join(experiment_path, "model.pkl"))["best_valid_loss"]
     epoch_checkpoint = torch.load(os.path.join(experiment_path, "model_last_checkpoint.pkl"))["epoch"]
+    print("Best validation loss obtained after {} epochs is: {}".format(epoch_checkpoint, best_valid_loss))
 else:
     best_valid_loss = 100
     epoch_checkpoint = 0
 
-print("Best validation loss so far is:", best_valid_loss)
-
 # train the Model
+print("Starting training...")
 for epoch in range(hyper_params["num_epochs"]):
-    print("##### epoch {:2d}".format(epoch))
+    print("##### epoch {:2d}".format(epoch + 1))
     model.train()
     train_losses = 0
     train_ems = 0
@@ -129,8 +144,8 @@ for epoch in range(hyper_params["num_epochs"]):
             print("Number of exact matches in batch:", exact_match(pred1, pred2, label1, label2))
 
     writer.add_scalars("train", {"loss": np.round(train_losses / len(train_dataloader), 2),
-                       "EM": np.round(train_ems / len(train_dataloader), 2),
-                       "epoch": epoch + 1})
+                                 "EM": np.round(train_ems / len(train_dataloader), 2),
+                                 "epoch": epoch + 1})
     print("Train loss of the model at epoch {} is: {}".format(epoch + 1, np.round(train_losses /
                                                                                   len(train_dataloader), 2)))
     print("Train EM of the model at epoch {} is: {}".format(epoch + 1, np.round(train_ems /
@@ -138,6 +153,7 @@ for epoch in range(hyper_params["num_epochs"]):
 
     model.eval()
     valid_losses = 0
+    valid_ems = 0
     with torch.no_grad():
         for i, batch in enumerate(valid_dataloader):
             w_context, c_context, w_question, c_question, label1, label2 = batch[0].long().to(device), \
@@ -149,11 +165,15 @@ for epoch in range(hyper_params["num_epochs"]):
             pred1, pred2 = model(w_context, c_context, w_question, c_question)
             loss = criterion(pred1, label1) + criterion(pred2, label2)
             valid_losses += loss.item()
+            valid_ems += exact_match(pred1, pred2, label1, label2)
 
         writer.add_scalars("valid", {"loss": np.round(valid_losses / len(valid_dataloader), 2),
-                          "epoch": epoch + 1})
-        print("Validation loss of the model at epoch {} is: {}".format(epoch + 1, np.round(valid_losses /
-                                                                                           len(valid_dataloader), 2)))
+                                     "EM": np.round(valid_ems / len(valid_dataloader), 2),
+                                     "epoch": epoch + 1})
+        print("Valid loss of the model at epoch {} is: {}".format(epoch + 1, np.round(valid_losses /
+                                                                                      len(valid_dataloader), 2)))
+        print("Valid EM of the model at epoch {} is: {}".format(epoch + 1, np.round(valid_ems /
+                                                                                    len(valid_dataloader), 2)))
 
     # save last model weights
     save_checkpoint({

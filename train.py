@@ -4,7 +4,6 @@ import pickle
 import os
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tensorboardX import SummaryWriter
 
@@ -124,10 +123,10 @@ for epoch in range(hyper_params["num_epochs"]):
         loss.backward()
         optimizer.step()
 
-#        if (i + 1) % 1 == 0:
-#            print("Epoch [%d/%d], Iter [%d/%d] Loss: %.4f"
-#                  % (epoch + 1, hyper_params["num_epochs"], i + 1, len(train_dataloader), loss.item()))
-#            print("Number of exact matches in batch:", exact_match(pred1, pred2, label1, label2))
+        if (i + 1) % 1 == 0:
+            print("Epoch [%d/%d], Iter [%d/%d] Loss: %.4f"
+                  % (epoch + 1, hyper_params["num_epochs"], i + 1, len(train_dataloader), loss.item()))
+            print("Number of exact matches in batch:", exact_match(pred1, pred2, label1, label2))
 
     writer.add_scalars("train", {"loss": np.round(train_losses / len(train_dataloader), 2),
                        "EM": np.round(train_ems / len(train_dataloader), 2),

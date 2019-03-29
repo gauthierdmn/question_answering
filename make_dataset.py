@@ -202,8 +202,8 @@ class SquadPreprocessor:
                         question_char_idx[j, k] = char2idx[char]
                     else:
                         question_char_idx[j, k] = 1
-            question_idxs.append(context_idx)
-            question_char_idxs.append(context_char_idx)
+            question_idxs.append(question_idx)
+            question_char_idxs.append(question_char_idx)
 
         # save features as numpy arrays
         np.savez(os.path.join(self.data_dir, directory, directory + "_features"),

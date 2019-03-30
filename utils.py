@@ -1,10 +1,8 @@
 # external libraries
 import os
-import spacy
 import pickle
 import numpy as np
 from collections import Counter
-from spacy.tokenizer import Tokenizer
 from spacy.lang.en import English
 import torch
 from torch.utils.data.sampler import SubsetRandomSampler
@@ -14,8 +12,7 @@ import torch.nn as nn
 # internal utilities
 import config
 
-nlp = spacy.load(config.spacy_en)
-tokenizer = Tokenizer(nlp.vocab)
+tokenizer = English()
 device = torch.device("cuda" if config.cuda else "cpu")
 
 

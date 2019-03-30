@@ -154,14 +154,14 @@ class SquadPreprocessor:
             labels = l.readlines()
 
         # clean and tokenize context and question
-        context = [[w.lower().strip('\n') for w in word_tokenize(clean_text(doc))] for doc in context]
-        question = [[w.lower().strip('\n') for w in word_tokenize(clean_text(doc))] for doc in question]
+        context = [[w.lower().strip('\n').strip() for w in word_tokenize(clean_text(doc)) if w.strip('\n').strip()] for doc in context]
+        question = [[w.lower().strip('\n').strip() for w in word_tokenize(clean_text(doc)) if w.strip('\n').strip()] for doc in question]
         labels = [np.array(l.strip('\n').split(), dtype=np.int32) for l in labels]
 
         print("Number of context paragraphs before filtering:", len(context))
         filter = [len(c) < max_len_context and max([len(w) for w in c]) < max_len_word and
-                  len(q) < max_len_question and max([len(w) for w in q]) < max_len_word
-                  for c, q in zip(context, question)]
+                  len(q) < max_len_question and max([len(w) for w in q]) < max_len_word and
+                  len(q) > 3 for c, q in zip(context, question)]
         context, question, labels = zip(*[(c, q, l) for c, q, l, f in zip(
                                           context, question, labels, filter) if f])
         print("Number of context paragraphs after filtering ", len(context))

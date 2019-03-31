@@ -129,19 +129,25 @@ class SquadPreprocessor:
     def extract_features(self, max_len_context=config.max_len_context, max_len_question=config.max_len_question,
                          max_len_word=config.max_len_word, is_train=True):
         # choose the right directory
-        directory = 'train' if is_train else 'dev'
+        directory = "train" if is_train else "dev"
 
         # download vocabulary if not done yet
-        word_vocab, word2idx, char_vocab, char2idx = build_vocab(directory + ".context", directory + ".question",
-                                                                 "word_vocab.pkl", "word2idx.pkl", "char_vocab.pkl",
-                                                                 "char2idx.pkl", is_train=is_train,
-                                                                 max_words=config.max_words)
+        if directory == "train":
+            word_vocab, word2idx, char_vocab, char2idx = build_vocab(directory + ".context", directory + ".question",
+                                                                     "word_vocab.pkl", "word2idx.pkl", "char_vocab.pkl",
+                                                                     "char2idx.pkl", is_train=is_train,
+                                                                     max_words=config.max_words)
+            # create an embedding matrix from the vocabulary with pretrained vectors (GloVe) for words
+            build_embeddings(word_vocab, embedding_path=config.glove, output_path="word_embeddings.pkl",
+                             vec_size=config.word_embedding_size)
+            build_embeddings(char_vocab, embedding_path="", output_path="char_embeddings.pkl",
+                             vec_size=config.char_embedding_size)
 
-        # create an embedding matrix from the vocabulary with pretrained vectors (GloVe) for words
-        build_embeddings(word_vocab, embedding_path=config.glove, output_path="word_embeddings.pkl",
-                         vec_size=config.word_embedding_size)
-        build_embeddings(char_vocab, embedding_path="", output_path="char_embeddings.pkl",
-                         vec_size=config.char_embedding_size)
+        else:
+            with open(os.path.join(self.data_dir, "train", "word2idx.pkl"), "rb") as wi,\
+                 open(os.path.join(self.data_dir, "train", "char2idx.pkl"), "rb") as ci:
+                    word2idx = pickle.load(wi)
+                    char2idx = pickle.load(ci)
 
         # load context
         with open(os.path.join(self.data_dir, directory, directory + ".context"), "r") as c:
@@ -226,3 +232,5 @@ if __name__ == "__main__":
 
     p.extract_features(max_len_context=config.max_len_context, max_len_question=config.max_len_question,
                        max_len_word=config.max_len_word, is_train=True)
+    p.extract_features(max_len_context=config.max_len_context, max_len_question=config.max_len_question,
+                       max_len_word=config.max_len_word, is_train=False)

@@ -28,7 +28,6 @@ prepro_params = {
 hyper_params = {
     "num_epochs": config.num_epochs,
     "batch_size": config.batch_size,
-    "valid_size": config.valid_size,
     "learning_rate": config.learning_rate,
     "hidden_size": config.hidden_size,
     "char_channel_width": config.char_channel_width,
@@ -56,13 +55,20 @@ with open(os.path.join(experiment_path, "config_{}.json".format(config.exp)), "w
 # start TensorboardX writer
 writer = SummaryWriter(experiment_path)
 
-# open features file and store them in individual variables
-features = np.load(os.path.join(config.train_dir, "train_features.npz"))
-w_context = features["context_idxs"]
-c_context = features["context_char_idxs"]
-w_question = features["question_idxs"]
-c_question = features["question_char_idxs"]
-labels = features["label"]
+# open features file and store them in individual variables (train + dev)
+train_features = np.load(os.path.join(config.train_dir, "train_features.npz"))
+t_w_context, t_c_context, t_w_question, t_c_question, t_labels = train_features["context_idxs"],\
+                                                                 train_features["context_char_idxs"],\
+                                                                 train_features["question_idxs"],\
+                                                                 train_features["question_char_idxs"],\
+                                                                 train_features["label"]
+
+dev_features = np.load(os.path.join(config.dev_dir, "dev_features.npz"))
+d_w_context, d_c_context, d_w_question, d_c_question, d_labels = dev_features["context_idxs"],\
+                                                                 dev_features["context_char_idxs"],\
+                                                                 dev_features["question_idxs"],\
+                                                                 dev_features["question_char_idxs"],\
+                                                                 dev_features["label"]
 
 # load the embedding matrix created for our word vocabulary
 with open(os.path.join(config.train_dir, "word_embeddings.pkl"), "rb") as e:
@@ -75,22 +81,19 @@ word_embedding_matrix = torch.from_numpy(np.array(word_embedding_matrix)).type(t
 char_embedding_matrix = torch.from_numpy(np.array(char_embedding_matrix)).type(torch.float32)
 
 # load datasets
-train_dataset = SquadDataset(w_context, c_context, w_question, c_question, labels)
-valid_dataset = SquadDataset(w_context, c_context, w_question, c_question, labels)
-
-# define a split for train/valid
-train_sampler, valid_sampler = custom_sampler(data=w_context, valid_size=hyper_params["valid_size"])
+train_dataset = SquadDataset(t_w_context, t_c_context, t_w_question, t_c_question, t_labels)
+valid_dataset = SquadDataset(d_w_context, d_c_context, d_w_question, d_c_question, d_labels)
 
 # load data generators
 train_dataloader = DataLoader(train_dataset,
-                              shuffle=False,
+                              shuffle=True,
                               batch_size=hyper_params["batch_size"],
-                              sampler=train_sampler, num_workers=4)
+                              num_workers=4)
 
 valid_dataloader = DataLoader(valid_dataset,
-                              shuffle=False,
+                              shuffle=True,
                               batch_size=hyper_params["batch_size"],
-                              sampler=valid_sampler)
+                              num_workers=4)
 
 print("Length of training data loader is:", len(train_dataloader))
 print("Length of valid data loader is:", len(valid_dataloader))

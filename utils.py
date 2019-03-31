@@ -39,7 +39,7 @@ def build_vocab(context_filename, question_filename, word_vocab_filename, word2i
         question_file = question.readlines()
 
     # clean and tokenize the texts
-    words = [w.lower() for doc in context_file + question_file for w in word_tokenize(clean_text(doc))]
+    words = [w.lower().strip('\n').strip() for doc in context_file + question_file for w in word_tokenize(clean_text(doc)) if w.lower().strip('\n').strip()]
     chars = [c for w in words for c in list(w)]
     # create a dictionary with word and char frequencies
     word_vocab = Counter(words)

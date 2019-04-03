@@ -79,10 +79,10 @@ class SquadPreprocessor:
         if not os.path.exists(os.path.join(self.data_dir, sub_dir)):
             os.makedirs(os.path.join(self.data_dir, sub_dir))
 
-        with open(os.path.join(self.data_dir, sub_dir, sub_dir + '.context'), 'w', encoding='utf-8') as context_file,\
-             open(os.path.join(self.data_dir, sub_dir, sub_dir + '.question'), 'w', encoding='utf-8') as question_file,\
-             open(os.path.join(self.data_dir, sub_dir, sub_dir + '.answer'), 'w', encoding='utf-8') as answer_file,\
-             open(os.path.join(self.data_dir, sub_dir, sub_dir + '.labels'), 'w', encoding='utf-8') as labels_file:
+        with open(os.path.join(self.data_dir, sub_dir, sub_dir + '.context'), 'w', encoding="utf-8") as context_file,\
+             open(os.path.join(self.data_dir, sub_dir, sub_dir + '.question'), 'w', encoding="utf-8") as question_file,\
+             open(os.path.join(self.data_dir, sub_dir, sub_dir + '.answer'), 'w', encoding="utf-8") as answer_file,\
+             open(os.path.join(self.data_dir, sub_dir, sub_dir + '.labels'), 'w', encoding="utf-8") as labels_file:
 
             # loop over the data
             for article_id in tqdm.tqdm(range(len(self.data['data']))):
@@ -91,20 +91,20 @@ class SquadPreprocessor:
                 for paragraph in list_paragraphs:
                     context = paragraph['context']
                     context = clean_text(context)
-                    context_tokens = word_tokenize(context)
+                    context_tokens = [w for w in word_tokenize(context) if w]
                     spans = self.convert_idx(context, context_tokens)
                     qas = paragraph['qas']
                     # loop over Q/A
                     for qa in qas:
                         question = qa['question']
                         question = clean_text(question)
-                        question_tokens = word_tokenize(question)
+                        question_tokens = [w for w in word_tokenize(question) if w]
                         # select only one ground truth, the top answer
                         answer_id = 0
                         try:
                             answer = qa['answers'][answer_id]['text']
                             answer = clean_text(answer)
-                            answer_tokens = word_tokenize(answer)
+                            answer_tokens = [w for w in word_tokenize(answer) if w]
                             answer_start = qa['answers'][answer_id]['answer_start']
                             answer_stop = answer_start + len(answer)
                         except:
@@ -114,6 +114,8 @@ class SquadPreprocessor:
                         for idx, span in enumerate(spans):
                             if not (answer_stop <= span[0] or answer_start >= span[1]):
                                 answer_span.append(idx)
+                        if not answer_span:
+                            continue
                         y1, y2 = answer_span[0], answer_span[-1]
 
                         # write to file
@@ -150,18 +152,18 @@ class SquadPreprocessor:
                     char2idx = pickle.load(ci)
 
         # load context
-        with open(os.path.join(self.data_dir, directory, directory + ".context"), "r") as c:
+        with open(os.path.join(self.data_dir, directory, directory + ".context"), "r", encoding="utf-8") as c:
             context = c.readlines()
         # load questions
-        with open(os.path.join(self.data_dir, directory, directory + ".question"), "r") as q:
+        with open(os.path.join(self.data_dir, directory, directory + ".question"), "r", encoding="utf-8") as q:
             question = q.readlines()
         # load answer
-        with open(os.path.join(self.data_dir, directory, directory + ".labels"), "r") as l:
+        with open(os.path.join(self.data_dir, directory, directory + ".labels"), "r", encoding="utf-8") as l:
             labels = l.readlines()
 
         # clean and tokenize context and question
-        context = [[w.lower().strip('\n').strip() for w in word_tokenize(clean_text(doc)) if w.strip('\n').strip()] for doc in context]
-        question = [[w.lower().strip('\n').strip() for w in word_tokenize(clean_text(doc)) if w.strip('\n').strip()] for doc in question]
+        context = [[w for w in word_tokenize(clean_text(doc.strip('\n')))] for doc in context]
+        question = [[w for w in word_tokenize(clean_text(doc.strip('\n')))] for doc in question]
         labels = [np.array(l.strip('\n').split(), dtype=np.int32) for l in labels]
 
         print("Number of context paragraphs before filtering:", len(context))

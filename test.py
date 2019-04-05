@@ -11,7 +11,7 @@ from tensorboardX import SummaryWriter
 import config
 from model import BiDAF
 from data_loader import SquadDataset
-from utils import compute_em
+from utils import compute_batch_metrics
 
 # preprocessing values used for training
 prepro_params = {
@@ -101,20 +101,21 @@ model.to(device)
 criterion = nn.CrossEntropyLoss()
 
 model.eval()
-test_ems = 0
+test_em = 0
+test_f1 = 0
 with torch.no_grad():
     for i, batch in enumerate(test_dataloader):
-        w_context, c_context, w_question, c_question, batch_labels = batch[0].long().to(device),\
+        w_context, c_context, w_question, c_question, labels = batch[0].long().to(device),\
                                                                      batch[1].long().to(device),\
                                                                      batch[2].long().to(device),\
                                                                      batch[3].long().to(device),\
                                                                      batch[4]
         pred1, pred2 = model(w_context, c_context, w_question, c_question)
-        test_ems += compute_em(batch_labels, pred1, pred2)
+        em, f1 = compute_batch_metrics(w_context, idx2word, pred1, pred2, labels)
+        test_em += em
+        test_f1 += f1
 
-        #print("Question:", [idx2word[i].encode("utf-8") for i in w_question[0].cpu().numpy().tolist() if i != 0])
-        #print("Prediction:", [idx2word[i].encode("utf-8") for i in w_context[0][starts[0]: ends[0] + 1].cpu().numpy().tolist()])
-        #print("Answer:", [idx2word[i].encode("utf-8") for i in w_context[0].cpu().numpy().tolist()[label1[0].cpu().item(): label2[0].cpu().item() + 1]], "\n")
-
-    writer.add_scalars("test", {"EM": np.round(test_ems / len(test_dataloader), 2)})
-    print("Test EM of the model after training is: {}".format(np.round(test_ems / len(test_dataloader), 2)))
+    writer.add_scalars("test", {"EM": np.round(test_em / len(test_dataloader), 2),
+                                "F1": np.round(test_f1 / len(test_dataloader), 2)})
+    print("Test EM of the model after training is: {}".format(np.round(test_em / len(test_dataloader), 2)))
+    print("Test F1 of the model after training is: {}".format(np.round(test_f1 / len(test_dataloader), 2)))

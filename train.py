@@ -12,7 +12,7 @@ from tensorboardX import SummaryWriter
 import config
 from model import BiDAF
 from data_loader import SquadDataset
-from utils import save_checkpoint, exact_match
+from utils import save_checkpoint, compute_batch_metrics
 
 # preprocessing values used for training
 prepro_params = {
@@ -130,7 +130,6 @@ for epoch in range(hyper_params["num_epochs"]):
     print("##### epoch {:2d}".format(epoch + 1))
     model.train()
     train_losses = 0
-    train_ems = 0
     for i, batch in enumerate(train_dataloader):
         w_context, c_context, w_question, c_question, label1, label2 = batch[0].long().to(device),\
                                                                        batch[1].long().to(device), \
@@ -142,44 +141,42 @@ for epoch in range(hyper_params["num_epochs"]):
         pred1, pred2 = model(w_context, c_context, w_question, c_question)
         loss = criterion(pred1, label1) + criterion(pred2, label2)
         train_losses += loss.item()
-        train_ems += exact_match(pred1, pred2, label1, label2)
 
         loss.backward()
         optimizer.step()
 
-        if (i + 1) % 1 == 0:
-            pass
-
     writer.add_scalars("train", {"loss": np.round(train_losses / len(train_dataloader), 2),
-                                 "EM": np.round(train_ems / len(train_dataloader), 2),
                                  "epoch": epoch + 1})
     print("Train loss of the model at epoch {} is: {}".format(epoch + 1, np.round(train_losses /
                                                                                   len(train_dataloader), 2)))
-    print("Train EM of the model at epoch {} is: {}".format(epoch + 1, np.round(train_ems /
-                                                                                len(train_dataloader), 2)))
 
     model.eval()
     valid_losses = 0
-    valid_ems = 0
+    valid_em = 0
+    valid_f1 = 0
     with torch.no_grad():
         for i, batch in enumerate(valid_dataloader):
-            w_context, c_context, w_question, c_question, label1, label2 = batch[0].long().to(device), \
-                                                batch[1].long().to(device), \
-                                                batch[2].long().to(device), \
-                                                batch[3].long().to(device), \
-                                                batch[4][:, 0].long().to(device), \
-                                                batch[4][:, 1].long().to(device)
+            w_context, c_context, w_question, c_question, labels = batch[0].long().to(device), \
+                                                                   batch[1].long().to(device), \
+                                                                   batch[2].long().to(device), \
+                                                                   batch[3].long().to(device), \
+                                                                   batch[4].long().to(device)
             pred1, pred2 = model(w_context, c_context, w_question, c_question)
-            loss = criterion(pred1, label1) + criterion(pred2, label2)
+            loss = criterion(pred1, labels[:, 0]) + criterion(pred2, labels[:, 1])
             valid_losses += loss.item()
-            valid_ems += exact_match(pred1, pred2, label1, label2)
+            em, f1 = compute_batch_metrics(w_context, idx2word, pred1, pred2, labels)
+            valid_em += em
+            valid_f1 += f1
 
         writer.add_scalars("valid", {"loss": np.round(valid_losses / len(valid_dataloader), 2),
-                                     "EM": np.round(valid_ems / len(valid_dataloader), 2),
+                                     "EM": np.round(valid_em / len(valid_dataloader), 2),
+                                     "F1": np.round(valid_f1 / len(valid_dataloader), 2),
                                      "epoch": epoch + 1})
         print("Valid loss of the model at epoch {} is: {}".format(epoch + 1, np.round(valid_losses /
                                                                                       len(valid_dataloader), 2)))
-        print("Valid EM of the model at epoch {} is: {}".format(epoch + 1, np.round(valid_ems /
+        print("Valid EM of the model at epoch {} is: {}".format(epoch + 1, np.round(valid_em /
+                                                                                    len(valid_dataloader), 2)))
+        print("Valid F1 of the model at epoch {} is: {}".format(epoch + 1, np.round(valid_f1 /
                                                                                     len(valid_dataloader), 2)))
 
     # save last model weights

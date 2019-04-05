@@ -2,7 +2,6 @@
 import numpy as np
 import pickle
 import os
-import json
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -12,7 +11,7 @@ from tensorboardX import SummaryWriter
 import config
 from model import BiDAF
 from data_loader import SquadDataset
-from utils import save_checkpoint, exact_match, discretize
+from utils import compute_em
 
 # preprocessing values used for training
 prepro_params = {
@@ -76,46 +75,46 @@ word_embedding_matrix = torch.from_numpy(np.array(word_embedding_matrix)).type(t
 char_embedding_matrix = torch.from_numpy(np.array(char_embedding_matrix)).type(torch.float32)
 
 # load dataset
-valid_dataset = SquadDataset(d_w_context, d_c_context, d_w_question, d_c_question, d_labels)
+test_dataset = SquadDataset(d_w_context, d_c_context, d_w_question, d_c_question, d_labels)
 
 # load data generator
-valid_dataloader = DataLoader(valid_dataset,
+test_dataloader = DataLoader(test_dataset,
                               shuffle=True,
                               batch_size=hyper_params["batch_size"],
                               num_workers=4)
 
-print("Length of valid data loader is:", len(valid_dataloader))
+print("Length of test data loader is:", len(test_dataloader))
 
 # load the model
 model = BiDAF(word_vectors=word_embedding_matrix,
+              char_vectors=char_embedding_matrix,
               hidden_size=hyper_params["hidden_size"],
               drop_prob=hyper_params["drop_prob"])
-model.load_state_dict(torch.load(os.path.join(experiment_path, "model.pkl"))["state_dict"])
+try:
+    model.load_state_dict(torch.load(os.path.join(experiment_path, "model.pkl"))["state_dict"])
+    print("Model weights successfully loaded.")
+except:
+    print("Model weights not found, initialized model with random weights.")
 model.to(device)
 
 # define loss criterion
 criterion = nn.CrossEntropyLoss()
 
 model.eval()
-valid_losses = 0
-valid_ems = 0
+test_ems = 0
 with torch.no_grad():
-    for i, batch in enumerate(valid_dataloader):
-        w_context, w_question, label1, label2 = batch[0].long().to(device), \
-                                                batch[1].long().to(device), \
-                                                batch[2][:, 0].long().to(device), \
-                                                batch[2][:, 1].long().to(device)
-        pred1, pred2 = model(w_context, w_question)
-        loss = criterion(pred1, label1) + criterion(pred2, label2)
-        valid_losses += loss.item()
-        starts, ends = discretize(pred1.exp(), pred2.exp(), 15, False)
-        valid_ems += sum(np.multiply([starts.cpu().numpy() == label1.cpu().numpy()], [ends.cpu().numpy() == label2.cpu().numpy()])[0, :])
-        word_preds_0 = w_context[0][starts[0]:ends[0] + 1]
-        print("Question:", [idx2word[i].encode("utf-8") for i in w_question[0].cpu().numpy().tolist() if i != 0])
-        print("Prediction:", [idx2word[i].encode("utf-8") for i in word_preds_0.cpu().numpy().tolist()])
-        print("Answer:", [idx2word[i].encode("utf-8") for i in w_context[0].cpu().numpy().tolist()[label1[0].cpu().item():label2[0].cpu().item() + 1]], "\n")
+    for i, batch in enumerate(test_dataloader):
+        w_context, c_context, w_question, c_question, batch_labels = batch[0].long().to(device),\
+                                                                     batch[1].long().to(device),\
+                                                                     batch[2].long().to(device),\
+                                                                     batch[3].long().to(device),\
+                                                                     batch[4]
+        pred1, pred2 = model(w_context, c_context, w_question, c_question)
+        test_ems += compute_em(batch_labels, pred1, pred2)
 
-    writer.add_scalars("test", {"loss": np.round(valid_losses / len(valid_dataloader), 2),
-                                 "EM": np.round(valid_ems / len(valid_dataloader), 2)})
-    print("Valid loss of the model after training is: {}".format(np.round(valid_losses / len(valid_dataloader), 2)))
-    print("Valid EM of the model after training is: {}".format(np.round(valid_ems / len(valid_dataloader), 2)))
+        #print("Question:", [idx2word[i].encode("utf-8") for i in w_question[0].cpu().numpy().tolist() if i != 0])
+        #print("Prediction:", [idx2word[i].encode("utf-8") for i in w_context[0][starts[0]: ends[0] + 1].cpu().numpy().tolist()])
+        #print("Answer:", [idx2word[i].encode("utf-8") for i in w_context[0].cpu().numpy().tolist()[label1[0].cpu().item(): label2[0].cpu().item() + 1]], "\n")
+
+    writer.add_scalars("test", {"EM": np.round(test_ems / len(test_dataloader), 2)})
+    print("Test EM of the model after training is: {}".format(np.round(test_ems / len(test_dataloader), 2)))

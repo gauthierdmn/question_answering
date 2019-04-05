@@ -12,7 +12,7 @@ from tensorboardX import SummaryWriter
 import config
 from model import BiDAF
 from data_loader import SquadDataset
-from utils import custom_sampler, save_checkpoint, exact_match
+from utils import save_checkpoint, exact_match
 
 # preprocessing values used for training
 prepro_params = {
@@ -75,6 +75,12 @@ with open(os.path.join(config.train_dir, "word_embeddings.pkl"), "rb") as e:
     word_embedding_matrix = pickle.load(e)
 with open(os.path.join(config.train_dir, "char_embeddings.pkl"), "rb") as e:
     char_embedding_matrix = pickle.load(e)
+
+# load mapping between words and idxs
+with open(os.path.join(config.train_dir, "word2idx.pkl"), "rb") as f:
+    word2idx = pickle.load(f)
+
+idx2word = dict([(y, x) for x, y in word2idx.items()])
 
 # transform them into Tensors
 word_embedding_matrix = torch.from_numpy(np.array(word_embedding_matrix)).type(torch.float32)
@@ -142,9 +148,7 @@ for epoch in range(hyper_params["num_epochs"]):
         optimizer.step()
 
         if (i + 1) % 1 == 0:
-            print("Epoch [%d/%d], Iter [%d/%d] Loss: %.4f"
-                  % (epoch + 1, hyper_params["num_epochs"], i + 1, len(train_dataloader), loss.item()))
-            print("Number of exact matches in batch:", exact_match(pred1, pred2, label1, label2))
+            pass
 
     writer.add_scalars("train", {"loss": np.round(train_losses / len(train_dataloader), 2),
                                  "EM": np.round(train_ems / len(train_dataloader), 2),

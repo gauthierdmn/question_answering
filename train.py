@@ -57,18 +57,18 @@ writer = SummaryWriter(experiment_path)
 
 # open features file and store them in individual variables (train + dev)
 train_features = np.load(os.path.join(config.train_dir, "train_features.npz"))
-t_w_context, t_c_context, t_w_question, t_c_question, t_labels = train_features["context_idxs"],\
-                                                                 train_features["context_char_idxs"],\
-                                                                 train_features["question_idxs"],\
-                                                                 train_features["question_char_idxs"],\
-                                                                 train_features["label"]
+t_w_context, t_c_context, t_w_question, t_c_question, t_labels = train_features["context_idxs"][:100],\
+                                                                 train_features["context_char_idxs"][:100],\
+                                                                 train_features["question_idxs"][:100],\
+                                                                 train_features["question_char_idxs"][:100],\
+                                                                 train_features["label"][:100]
 
 dev_features = np.load(os.path.join(config.dev_dir, "dev_features.npz"))
-d_w_context, d_c_context, d_w_question, d_c_question, d_labels = dev_features["context_idxs"],\
-                                                                 dev_features["context_char_idxs"],\
-                                                                 dev_features["question_idxs"],\
-                                                                 dev_features["question_char_idxs"],\
-                                                                 dev_features["label"]
+d_w_context, d_c_context, d_w_question, d_c_question, d_labels = dev_features["context_idxs"][:100],\
+                                                                 dev_features["context_char_idxs"][:100],\
+                                                                 dev_features["question_idxs"][:100],\
+                                                                 dev_features["question_char_idxs"][:100],\
+                                                                 dev_features["label"][:100]
 
 # load the embedding matrix created for our word vocabulary
 with open(os.path.join(config.train_dir, "word_embeddings.pkl"), "rb") as e:
@@ -160,9 +160,12 @@ for epoch in range(hyper_params["num_epochs"]):
                                                                    batch[1].long().to(device), \
                                                                    batch[2].long().to(device), \
                                                                    batch[3].long().to(device), \
-                                                                   batch[4].long().to(device)
+                                                                   batch[4]
+
+            first_labels = torch.tensor([[int(a) for a in l.split("|")[0].split(" ")]
+                                         for l in labels], dtype=torch.int64).to(device)
             pred1, pred2 = model(w_context, c_context, w_question, c_question)
-            loss = criterion(pred1, labels[:, 0]) + criterion(pred2, labels[:, 1])
+            loss = criterion(pred1, first_labels[:, 0]) + criterion(pred2, first_labels[:, 1])
             valid_losses += loss.item()
             em, f1 = compute_batch_metrics(w_context, idx2word, pred1, pred2, labels)
             valid_em += em

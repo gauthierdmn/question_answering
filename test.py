@@ -79,9 +79,9 @@ test_dataset = SquadDataset(d_w_context, d_c_context, d_w_question, d_c_question
 
 # load data generator
 test_dataloader = DataLoader(test_dataset,
-                              shuffle=True,
-                              batch_size=hyper_params["batch_size"],
-                              num_workers=4)
+                             shuffle=True,
+                             batch_size=hyper_params["batch_size"],
+                             num_workers=4)
 
 print("Length of test data loader is:", len(test_dataloader))
 
@@ -103,6 +103,7 @@ criterion = nn.CrossEntropyLoss()
 model.eval()
 test_em = 0
 test_f1 = 0
+n_samples = 0
 with torch.no_grad():
     for i, batch in enumerate(test_dataloader):
         w_context, c_context, w_question, c_question, labels = batch[0].long().to(device),\
@@ -114,8 +115,10 @@ with torch.no_grad():
         em, f1 = compute_batch_metrics(w_context, idx2word, pred1, pred2, labels)
         test_em += em
         test_f1 += f1
+        n_samples += w_context.size(0)
 
-    writer.add_scalars("test", {"EM": np.round(test_em / len(test_dataloader), 2),
-                                "F1": np.round(test_f1 / len(test_dataloader), 2)})
-    print("Test EM of the model after training is: {}".format(np.round(test_em / len(test_dataloader), 2)))
-    print("Test F1 of the model after training is: {}".format(np.round(test_f1 / len(test_dataloader), 2)))
+    writer.add_scalars("test", {"EM": np.round(test_em / n_samples, 2),
+                                "F1": np.round(test_f1 / n_samples, 2)})
+    print("Test EM of the model after training is: {}".format(np.round(test_em / n_samples, 2)))
+    print("Test F1 of the model after training is: {}".format(np.round(test_f1 / n_samples, 2)))
+

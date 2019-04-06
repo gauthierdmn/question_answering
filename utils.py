@@ -198,7 +198,7 @@ def compute_batch_metrics(context, idx2word, pred1, pred2, batch_labels):
             em = compute_em(gt, prediction)
             if em > max_em:
                 max_em = em
-        ems += em
+        ems += max_em
         f1s += max_f1
     return ems, f1s
 

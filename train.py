@@ -156,6 +156,7 @@ for epoch in range(hyper_params["num_epochs"]):
     valid_losses = 0
     valid_em = 0
     valid_f1 = 0
+    n_samples = 0
     with torch.no_grad():
         for i, batch in enumerate(valid_dataloader):
             w_context, c_context, w_question, c_question, labels = batch[0].long().to(device), \
@@ -172,17 +173,16 @@ for epoch in range(hyper_params["num_epochs"]):
             em, f1 = compute_batch_metrics(w_context, idx2word, pred1, pred2, labels)
             valid_em += em
             valid_f1 += f1
+            n_samples += w_context.size(0)
 
         writer.add_scalars("valid", {"loss": np.round(valid_losses / len(valid_dataloader), 2),
-                                     "EM": np.round(valid_em / len(valid_dataloader), 2),
-                                     "F1": np.round(valid_f1 / len(valid_dataloader), 2),
+                                     "EM": np.round(valid_em / n_samples, 2),
+                                     "F1": np.round(valid_f1 / n_samples, 2),
                                      "epoch": epoch + 1})
         print("Valid loss of the model at epoch {} is: {}".format(epoch + 1, np.round(valid_losses /
                                                                                       len(valid_dataloader), 2)))
-        print("Valid EM of the model at epoch {} is: {}".format(epoch + 1, np.round(valid_em /
-                                                                                    len(valid_dataloader), 2)))
-        print("Valid F1 of the model at epoch {} is: {}".format(epoch + 1, np.round(valid_f1 /
-                                                                                    len(valid_dataloader), 2)))
+        print("Valid EM of the model at epoch {} is: {}".format(epoch + 1, np.round(valid_em / n_samples, 2)))
+        print("Valid F1 of the model at epoch {} is: {}".format(epoch + 1, np.round(valid_f1 / n_samples, 2)))
 
     # save last model weights
     save_checkpoint({

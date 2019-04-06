@@ -57,18 +57,18 @@ writer = SummaryWriter(experiment_path)
 
 # open features file and store them in individual variables (train + dev)
 train_features = np.load(os.path.join(config.train_dir, "train_features.npz"))
-t_w_context, t_c_context, t_w_question, t_c_question, t_labels = train_features["context_idxs"][:100],\
-                                                                 train_features["context_char_idxs"][:100],\
-                                                                 train_features["question_idxs"][:100],\
-                                                                 train_features["question_char_idxs"][:100],\
-                                                                 train_features["label"][:100]
+t_w_context, t_c_context, t_w_question, t_c_question, t_labels = train_features["context_idxs"],\
+                                                                 train_features["context_char_idxs"],\
+                                                                 train_features["question_idxs"],\
+                                                                 train_features["question_char_idxs"],\
+                                                                 train_features["label"]
 
 dev_features = np.load(os.path.join(config.dev_dir, "dev_features.npz"))
-d_w_context, d_c_context, d_w_question, d_c_question, d_labels = dev_features["context_idxs"][:100],\
-                                                                 dev_features["context_char_idxs"][:100],\
-                                                                 dev_features["question_idxs"][:100],\
-                                                                 dev_features["question_char_idxs"][:100],\
-                                                                 dev_features["label"][:100]
+d_w_context, d_c_context, d_w_question, d_c_question, d_labels = dev_features["context_idxs"],\
+                                                                 dev_features["context_char_idxs"],\
+                                                                 dev_features["question_idxs"],\
+                                                                 dev_features["question_char_idxs"],\
+                                                                 dev_features["label"]
 
 # load the embedding matrix created for our word vocabulary
 with open(os.path.join(config.train_dir, "word_embeddings.pkl"), "rb") as e:
@@ -109,6 +109,8 @@ model = BiDAF(word_vectors=word_embedding_matrix,
               char_vectors=char_embedding_matrix,
               hidden_size=hyper_params["hidden_size"],
               drop_prob=hyper_params["drop_prob"])
+if hyper_params["pretrained"]:
+    model.load_state_dict(torch.load(os.path.join(experiment_path, "model.pkl"))["state_dict"])
 model.to(device)
 
 # define loss and optimizer

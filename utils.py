@@ -136,7 +136,7 @@ def masked_softmax(logits, mask, dim=-1, log_softmax=False):
 
 
 def to_string(context, idx2word, start_idx, end_idx):
-    if device == "gpu":
+    if config.cuda:
         return " ".join([idx2word[i] for i in context.cpu().numpy().tolist()[start_idx: end_idx + 1]])
     else:
         return " ".join([idx2word[i] for i in context.numpy().tolist()[start_idx: end_idx + 1]])

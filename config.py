@@ -1,5 +1,5 @@
 # experiment ID
-exp = "exp3"
+exp = "expY"
 
 # data directories
 data_dir = "/AZVOL/question_answering/data/"
@@ -11,8 +11,8 @@ spacy_en = "/Users/gdamien/Data/spacy/en_core_web_sm-2.0.0/en_core_web_sm/en_cor
 glove = "/AZVOL/question_answering/data/glove.6B/glove.6B.{}d.txt"
 
 # preprocessing values
-max_words = 40000
-word_embedding_size = 300
+max_words = -1
+word_embedding_size = 100
 char_embedding_size = 8
 max_len_context = 400
 max_len_question = 50
@@ -21,11 +21,10 @@ max_len_word = 25
 # training hyper-parameters
 num_epochs = 15
 batch_size = 64
-valid_size = 0.01
-learning_rate = 0.5
+learning_rate = 0.05
 drop_prob = 0.2
 hidden_size = 100
 char_channel_width = 5
 char_channel_size = 100
 cuda = True
-pretrained = False
+pretrained = True

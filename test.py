@@ -91,7 +91,11 @@ model = BiDAF(word_vectors=word_embedding_matrix,
               hidden_size=hyper_params["hidden_size"],
               drop_prob=hyper_params["drop_prob"])
 try:
-    model.load_state_dict(torch.load(os.path.join(experiment_path, "model.pkl"))["state_dict"])
+    if config.cuda:
+        model.load_state_dict(torch.load(os.path.join(config.squad_models, "model_final.pkl"))["state_dict"])
+    else:
+        model.load_state_dict(torch.load(os.path.join(config.squad_models, "model_final.pkl"),
+                                         map_location=lambda storage, loc: storage)["state_dict"])
     print("Model weights successfully loaded.")
 except:
     print("Model weights not found, initialized model with random weights.")

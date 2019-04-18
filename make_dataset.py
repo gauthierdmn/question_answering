@@ -10,7 +10,7 @@ import urllib.request
 
 # internal utilities
 import config
-from utils import tokenizer, clean_text, word_tokenize, build_vocab, build_embeddings
+from utils import tokenizer, clean_text, word_tokenize, build_vocab, build_embeddings, convert_idx
 
 # URL to download SQuAD dataset 2.0
 url = "https://rajpurkar.github.io/SQuAD-explorer/dataset"
@@ -59,18 +59,6 @@ class SquadPreprocessor:
         with open(filepath) as f:
             self.data = json.load(f)
 
-    def convert_idx(self, text, tokens):
-        current = 0
-        spans = []
-        for token in tokens:
-            current = text.find(token, current)
-            if current < 0:
-                print("Token {} cannot be found".format(token))
-                raise Exception()
-            spans.append((current, current + len(token)))
-            current += len(token)
-        return spans
-
     def split_data(self, filename):
         self.load_data(filename)
         sub_dir = filename.split('-')[0]
@@ -92,7 +80,7 @@ class SquadPreprocessor:
                     context = paragraph['context']
                     context = clean_text(context)
                     context_tokens = [w for w in word_tokenize(context) if w]
-                    spans = self.convert_idx(context, context_tokens)
+                    spans = convert_idx(context, context_tokens)
                     qas = paragraph['qas']
                     # loop over Q/A
                     for qa in qas:

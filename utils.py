@@ -9,7 +9,6 @@ from spacy.lang.en import English
 import torch
 from torch.utils.data.sampler import SubsetRandomSampler
 import torch.nn.functional as F
-import torch.nn as nn
 
 # internal utilities
 import config
@@ -29,6 +28,19 @@ def clean_text(text):
 
 def word_tokenize(sent):
     return [token.text for token in tokenizer(sent)]
+
+
+def convert_idx(text, tokens):
+    current = 0
+    spans = []
+    for token in tokens:
+        current = text.find(token, current)
+        if current < 0:
+            print("Token {} cannot be found".format(token))
+            raise Exception()
+        spans.append((current, current + len(token)))
+        current += len(token)
+    return spans
 
 
 def build_vocab(context_filename, question_filename, word_vocab_filename, word2idx_filename,

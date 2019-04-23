@@ -28,7 +28,7 @@ Source: [BiDAF paper](https://arxiv.org/abs/1611.01603)
 
 # Results
 
-Working on it to have nice-looking graphs! ;)
+![Loss and Metrics](loss-and-metrics.png)
 
 # Set-Up
 

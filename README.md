@@ -30,6 +30,13 @@ Source: [BiDAF paper](https://arxiv.org/abs/1611.01603)
 
 ![Loss and Metrics](loss-and-metrics.png)
 
+Exact-Match and F1 Score on Validation set after training:
+
+| EM  | F1  |
+| ----|:---:|
+| 0.64| 0.75|
+
+
 # Set-Up
 
 * Clone the repository
